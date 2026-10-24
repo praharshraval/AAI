@@ -1,0 +1,35 @@
+# Node.js dependencies & build outputs
+node_modules/
+dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Rust & Tauri build outputs
+src-tauri/target/
+src-tauri/gen/
+
+# Python virtual environments & bytecode
+python-engine/.venv/
+python-engine/venv/
+python-engine/env/
+python-engine/**/__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Local databases & checkpointer state
+*.db
+*.db-shm
+*.db-wal
+checkpoints/
+
+# Local configuration & credentials
+vault.json
+.env
+.env.local
+.env.*.local
+
+# Operating system files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,95 @@
+/* ── Tailwind Directives ─────────────────────────────────────────────────── */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Base Styles ─────────────────────────────────────────────────────────── */
+@layer base {
+  body {
+    @apply bg-surface text-gray-100 font-sans antialiased;
+    /* Prevent rubber-band overscroll inside the Tauri webview */
+    overscroll-behavior: none;
+  }
+
+  /* Disable text-selection drag on UI chrome (buttons, labels, etc.) */
+  button,
+  label,
+  nav {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+
+/* ── Custom Scrollbar (dark theme) ───────────────────────────────────────── */
+@layer base {
+  /* Webkit-based browsers (Tauri uses WebKit on macOS / Chromium on Windows) */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-white/10 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-white/20;
+  }
+
+  /* Firefox */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+  }
+}
+
+/* ── Utility / Component Classes ─────────────────────────────────────────── */
+@layer components {
+  /* Glassmorphism card used throughout the dashboard UI */
+  .glass-card {
+    @apply bg-card/80 backdrop-blur-md border border-white/10 rounded-xl;
+  }
+
+  /* Subtle hover lift effect for interactive cards */
+  .glass-card-interactive {
+    @apply glass-card transition-all duration-200 ease-out
+           hover:border-white/20 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/20;
+  }
+
+  /* Status indicator dot (used in agent / workflow cards) */
+  .status-dot {
+    @apply inline-block h-2 w-2 rounded-full;
+  }
+
+  .status-dot-running {
+    @apply status-dot bg-accent animate-pulse;
+  }
+
+  .status-dot-idle {
+    @apply status-dot bg-gray-500;
+  }
+
+  .status-dot-error {
+    @apply status-dot bg-danger;
+  }
+
+  /* Primary action button */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg
+           bg-primary px-4 py-2 text-sm font-medium text-white
+           transition-colors hover:bg-primary/90
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50;
+  }
+
+  /* Ghost / secondary button */
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg
+           px-4 py-2 text-sm font-medium text-gray-300
+           transition-colors hover:bg-white/5 hover:text-white
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20;
+  }
+}
