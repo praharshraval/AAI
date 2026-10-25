@@ -55,7 +55,7 @@ def locate_element_visually(
         dict with 'found', 'x', 'y', 'width', 'height', 'confidence', 'description'
     """
     llm = ChatGoogleGenerativeAI(
-        model="gemini-2.0-flash",
+        model="gemini-3.5-flash",
         google_api_key=api_key,
         temperature=0.0,
     )

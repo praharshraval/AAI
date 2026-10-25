@@ -26,15 +26,16 @@ def _get_llm(state: AgentState) -> Optional[ChatGoogleGenerativeAI]:
     api_key = state.get("api_key", "")
     if not api_key or api_key.startswith("local") or api_key.startswith("test") or len(api_key) < 15:
         return None
-    try:
-        model = "gemini-2.0-flash"
-        return ChatGoogleGenerativeAI(
-            model=model,
-            google_api_key=api_key,
-            temperature=0.2,
-        )
-    except Exception:
-        return None
+    for model_name in ["gemini-3.5-flash", "gemini-3.6-flash", "gemini-3-flash-preview", "gemini-3.8-flash"]:
+        try:
+            return ChatGoogleGenerativeAI(
+                model=model_name,
+                google_api_key=api_key,
+                temperature=0.2,
+            )
+        except Exception:
+            continue
+    return None
 
 
 def _emit(msg_type: str, data: Any) -> None:
@@ -491,7 +492,7 @@ Generate the complete, accurate, high-quality production content for this step. 
             response = llm.invoke(full_prompt)
             return {
                 "content": response.content,
-                "model": "gemini-2.0-flash",
+                "model": "gemini-3.5-flash",
                 "usage": {},
             }
         except Exception:

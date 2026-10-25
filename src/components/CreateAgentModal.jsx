@@ -241,7 +241,7 @@ CONVERSATION RULES:
                 </h2>
                 <span className="flex items-center gap-1 rounded bg-zinc-800/90 px-2 py-0.5 font-mono text-[10px] text-zinc-300 border border-zinc-700/50">
                   <Sparkles size={10} className="text-amber-400" />
-                  Gemini 2.0 Flash
+                  Gemini Flash
                 </span>
               </div>
               <p className="text-[11px] text-zinc-400">
@@ -299,7 +299,7 @@ CONVERSATION RULES:
               </div>
               <div className="flex items-center gap-2 rounded-xl bg-zinc-900 border border-zinc-800 px-4 py-2.5 text-xs text-zinc-400">
                 <Loader2 size={13} className="animate-spin text-zinc-400" />
-                <span>Gemini 2.0 Flash is analyzing requirements...</span>
+                <span>Gemini Flash is analyzing requirements...</span>
               </div>
             </div>
           )}
