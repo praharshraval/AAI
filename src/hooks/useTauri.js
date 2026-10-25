@@ -321,6 +321,11 @@ export default function useTauri() {
     return res;
   }, []);
 
+  const validateGeminiKey = useCallback(
+    (key) => safe(() => invoke('validate_gemini_key', { key })),
+    []
+  );
+
   // ─── Preflight & Provisioning ──────────────────────────────────────
 
   const runPreflightCheck = useCallback(
@@ -395,6 +400,7 @@ export default function useTauri() {
     getApiKey,
     deleteApiKey,
     hasApiKey,
+    validateGeminiKey,
     runPreflightCheck,
     autoProvision,
     getAgents,

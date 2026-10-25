@@ -72,6 +72,7 @@ export default function SettingsModal({ isOpen, onClose }) {
     getApiKey,
     deleteApiKey,
     hasApiKey,
+    validateGeminiKey,
     runPreflightCheck,
     autoProvision,
   } = useTauri();
@@ -134,22 +135,14 @@ export default function SettingsModal({ isOpen, onClose }) {
     setStatusMessage(null);
     setErrorMessage(null);
 
-    try {
-      const resp = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models?key=${trimmed}`
-      );
-      if (resp.ok) {
-        setStatusMessage('✓ Gemini API connection confirmed: 2.0 Flash is ready.');
-      } else {
-        const data = await resp.json().catch(() => ({}));
-        const msg = data.error?.message || `HTTP ${resp.status}`;
-        setErrorMessage(`API verification failed: ${msg}`);
-      }
-    } catch (e) {
-      setErrorMessage(`Network error testing key: ${e.message}`);
+    const { data, error } = await validateGeminiKey(trimmed);
+    if (data) {
+      setStatusMessage('✓ Gemini API connection confirmed: 2.0 Flash is verified and active.');
+    } else {
+      setErrorMessage(error || 'Failed to validate key against Google API.');
     }
     setValidatingKey(false);
-  }, [keyValue]);
+  }, [keyValue, validateGeminiKey]);
 
   const handleDeleteKey = useCallback(async () => {
     setStatusMessage(null);

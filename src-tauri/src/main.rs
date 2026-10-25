@@ -56,6 +56,46 @@ async fn has_api_key() -> Result<bool, String> {
     keyring::has_gemini_key().map_err(|e| e.to_string())
 }
 
+/// Validate a Gemini API key against Google's API endpoint.
+#[tauri::command]
+async fn validate_gemini_key(key: String) -> Result<String, String> {
+    let trimmed = key.trim();
+    if trimmed.is_empty() {
+        return Err("API key cannot be empty".into());
+    }
+
+    let url = format!(
+        "https://generativelanguage.googleapis.com/v1beta/models?key={}",
+        trimmed
+    );
+
+    let output = tokio::process::Command::new("curl")
+        .arg("-s")
+        .arg("-w")
+        .arg("\n%{http_code}")
+        .arg(&url)
+        .output()
+        .await
+        .map_err(|e| format!("Network request failed: {e}"))?;
+
+    let full_resp = String::from_utf8_lossy(&output.stdout);
+    let mut lines = full_resp.trim().lines().collect::<Vec<_>>();
+    let status_code = lines.pop().unwrap_or("500");
+    let body = lines.join("\n");
+
+    if status_code == "200" {
+        let _ = keyring::store_gemini_key(trimmed);
+        Ok("Gemini API key verified successfully! Connected to Gemini 2.0 Flash.".into())
+    } else {
+        if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&body) {
+            if let Some(msg) = json_val.get("error").and_then(|e| e.get("message")).and_then(|m| m.as_str()) {
+                return Err(format!("Google API returned HTTP {status_code}: {msg}"));
+            }
+        }
+        Err(format!("Validation failed with HTTP status {status_code}"))
+    }
+}
+
 // =============================================================================
 // IPC Command Handlers — Bootstrap & Provisioning
 // =============================================================================
@@ -463,6 +503,7 @@ fn main() {
             get_api_key,
             delete_api_key,
             has_api_key,
+            validate_gemini_key,
             run_preflight_check,
             auto_provision,
             get_agents,

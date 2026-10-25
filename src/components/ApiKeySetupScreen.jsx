@@ -11,7 +11,7 @@ import useTauri from '../hooks/useTauri';
 import useStore from '../hooks/useStore';
 
 export default function ApiKeySetupScreen({ onKeyValidated }) {
-  const { storeApiKey } = useTauri();
+  const { storeApiKey, validateGeminiKey } = useTauri();
   const updateSettings = useStore((s) => s.updateSettings);
 
   const [apiKey, setApiKey] = useState('');
@@ -34,29 +34,24 @@ export default function ApiKeySetupScreen({ onKeyValidated }) {
     setValidationSuccess(false);
 
     try {
-      // Live validation directly against Google Gemini models endpoint
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models?key=${trimmed}`
-      );
+      // 1. First try native Rust backend validator (bypasses all webview CSP restrictions)
+      const { data, error } = await validateGeminiKey(trimmed);
 
-      if (response.ok) {
-        // Save to OS Keyring & AES-256 Vault
+      if (data) {
         await storeApiKey(trimmed);
         updateSettings({ apiKeyConfigured: true });
-
         setValidationSuccess(true);
         setTimeout(() => {
           onKeyValidated(trimmed);
         }, 750);
-      } else {
-        const errorJson = await response.json().catch(() => ({}));
-        const rawMsg =
-          errorJson?.error?.message ||
-          `Google API returned HTTP ${response.status} (${response.statusText})`;
-        setErrorMessage(`Validation failed: ${rawMsg}`);
+        return;
+      }
+
+      if (error) {
+        setErrorMessage(error);
       }
     } catch (err) {
-      setErrorMessage(`Network error verifying key: ${err.message}`);
+      setErrorMessage(`Validation error: ${err.message}`);
     } finally {
       setIsValidating(false);
     }
