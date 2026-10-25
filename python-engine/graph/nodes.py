@@ -288,6 +288,7 @@ Respond with ONLY a valid JSON object (no markdown fencing):
 }}
 
 CRITICAL RULES:
+- If credentials, API keys, passwords, or authentication are required, add a "user_input" step with {{"tool": "user_input", "parameters": {{"field_name": "credentials", "prompt": "Please enter credentials or authentication key to proceed"}}}}!
 - If the user asks to create or write a file (e.g. .py, .txt, .csv, .md, .json), you MUST include a "filesystem" step with {{"action": "write", "path": "<exact filename requested>"}} to actually write the file to disk!
 - If the user asks to scrape or browse, use "browser" with {{"action": "navigate", "url": "..."}} and {{"action": "get_content"}}.
 - Keep steps focused (2 to 5 atomic steps).
@@ -361,12 +362,42 @@ def execution_node(state: AgentState) -> dict:
     })
     
     step["status"] = "running"
+    runtime_inputs = dict(state.get("runtime_inputs") or {})
     
     try:
         tool = step["tool"]
         result = {}
         
-        if tool == "browser":
+        if tool == "user_input" or step.get("parameters", {}).get("requires_credentials"):
+            prompt_text = step.get("parameters", {}).get("prompt") or f"Please enter required credentials for: {step['action']}"
+            field_name = step.get("parameters", {}).get("field_name") or "credentials"
+            is_secret = any(k in field_name.lower() or k in prompt_text.lower() for k in ["password", "secret", "key", "token", "credential", "pin"])
+
+            _emit("input_required", {
+                "thread_id": state.get("thread_id", ""),
+                "step_id": step_id,
+                "prompt": prompt_text,
+                "field_name": field_name,
+                "is_secret": is_secret,
+            })
+
+            user_response = interrupt({
+                "type": "input_required",
+                "step_id": step_id,
+                "prompt": prompt_text,
+                "field_name": field_name,
+            })
+
+            provided_val = user_response.get("input", "") if isinstance(user_response, dict) else str(user_response)
+            runtime_inputs = dict(state.get("runtime_inputs") or {})
+            runtime_inputs[field_name] = provided_val
+
+            result = {
+                "status": "completed",
+                "content": f"User provided {field_name} (secured)",
+                "field_name": field_name,
+            }
+        elif tool == "browser":
             from tools.browser import execute_browser_step
             try:
                 result = execute_browser_step(step, state)
@@ -404,6 +435,7 @@ def execution_node(state: AgentState) -> dict:
         return {
             "manifest": manifest,
             "current_step_index": step_index + 1,
+            "runtime_inputs": runtime_inputs,
             "execution_results": existing_results,
             "messages": [{"role": "system", "content": f"✅ Step completed: {step['action']}"}],
         }

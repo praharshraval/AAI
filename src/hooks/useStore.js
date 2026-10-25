@@ -41,6 +41,13 @@ const useStore = create((set, get) => ({
   /** Whether the HITL preview modal is currently visible. */
   isPreviewOpen: false,
 
+  // ─── Mid-Execution User Input Slice ─────────────────────────────────
+  /**
+   * Pending prompt for credentials or parameters during live execution.
+   * Shape: { thread_id, prompt, field_name, is_secret }
+   */
+  pendingInputRequest: null,
+
   // ─── Settings Slice ─────────────────────────────────────────────────
   settings: {
     /** Whether a Gemini API key has been persisted in the secure store. */
@@ -54,6 +61,9 @@ const useStore = create((set, get) => ({
   sidecarStatus: 'idle', // 'idle' | 'running' | 'paused' | 'error'
 
   // ─── Actions ────────────────────────────────────────────────────────
+
+  setPendingInputRequest: (req) => set({ pendingInputRequest: req }),
+  clearPendingInputRequest: () => set({ pendingInputRequest: null }),
 
   addChatMessage: (msg) =>
     set((state) => ({

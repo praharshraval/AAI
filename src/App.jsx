@@ -291,8 +291,10 @@ export default function App() {
       <CreateAgentModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
-        onAgentCreated={(newAgent) => {
-          handleRunAgent(newAgent);
+        onAgentCreated={(newAgent, opts) => {
+          if (opts?.autoRun) {
+            handleRunAgent(newAgent);
+          }
         }}
       />
     </div>

@@ -77,6 +77,8 @@ class AgentState(TypedDict):
     # User input
     user_prompt: str
     api_key: str
+    thread_id: Optional[str]
+    runtime_inputs: Optional[dict[str, Any]]
     
     # Safety classification
     safety_classification: Literal["safe", "unsafe", "pending"]  

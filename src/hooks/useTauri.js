@@ -31,6 +31,8 @@ export default function useTauri() {
   const setAgents = useStore((s) => s.setAgents);
   const setActiveManifest = useStore((s) => s.setActiveManifest);
   const updateStepProgress = useStore((s) => s.updateStepProgress);
+  const setPendingInputRequest = useStore((s) => s.setPendingInputRequest);
+  const clearPendingInputRequest = useStore((s) => s.clearPendingInputRequest);
 
   // ─── Process incoming events from the Python engine ───────────────
   const processAgentEventLine = useCallback(
@@ -118,6 +120,20 @@ export default function useTauri() {
             break;
           }
 
+          case 'input_required': {
+            setSidecarStatus('paused');
+            const promptData = event.data || {};
+            setPendingInputRequest(promptData);
+            addChatMessage({
+              id: crypto.randomUUID(),
+              role: 'system',
+              content: `🔒 Information Requested: ${promptData.prompt || 'Please provide required parameter to continue.'}`,
+              timestamp: new Date().toISOString(),
+              isPromptRequest: true,
+            });
+            break;
+          }
+
           case 'hitl_pause': {
             setSidecarStatus('paused');
             const draft = event.data || event.preview || {};
@@ -164,6 +180,7 @@ export default function useTauri() {
           }
 
           case 'completed':
+            clearPendingInputRequest();
             addChatMessage({
               id: crypto.randomUUID(),
               role: 'assistant',
@@ -326,6 +343,18 @@ export default function useTauri() {
     []
   );
 
+  const queryGemini = useCallback(
+    (contents, systemInstruction, key) =>
+      safe(() =>
+        invoke('query_gemini', {
+          key: key || null,
+          contents,
+          systemInstruction: systemInstruction || null,
+        })
+      ),
+    []
+  );
+
   // ─── Preflight & Provisioning ──────────────────────────────────────
 
   const runPreflightCheck = useCallback(
@@ -401,6 +430,7 @@ export default function useTauri() {
     deleteApiKey,
     hasApiKey,
     validateGeminiKey,
+    queryGemini,
     runPreflightCheck,
     autoProvision,
     getAgents,

@@ -21,6 +21,7 @@ import {
   Check,
   Bot,
   Send,
+  Key,
 } from 'lucide-react';
 import useStore from '../hooks/useStore';
 import useTauri from '../hooks/useTauri';
@@ -30,12 +31,15 @@ export default function ChatIntake({ activeAgent }) {
   const sidecarStatus = useStore((s) => s.sidecarStatus);
   const activeManifest = useStore((s) => s.activeManifest);
   const stepProgress = useStore((s) => s.stepProgress);
+  const pendingInputRequest = useStore((s) => s.pendingInputRequest);
+  const clearPendingInputRequest = useStore((s) => s.clearPendingInputRequest);
   const addChatMessage = useStore((s) => s.addChatMessage);
   const clearChat = useStore((s) => s.clearChat);
 
-  const { startSidecar, stopSidecar, getApiKey } = useTauri();
+  const { startSidecar, stopSidecar, sendSidecarInput, getApiKey } = useTauri();
 
   const [input, setInput] = useState('');
+  const [runtimeInputValue, setRuntimeInputValue] = useState('');
   const [copiedLog, setCopiedLog] = useState(false);
   const logEndRef = useRef(null);
 
@@ -74,6 +78,30 @@ export default function ChatIntake({ activeAgent }) {
       });
     }
   }, [input, isBusy, addChatMessage, getApiKey, startSidecar]);
+
+  const handleSubmitRuntimeInput = async () => {
+    if (!runtimeInputValue.trim() || !pendingInputRequest) return;
+    const val = runtimeInputValue.trim();
+    setRuntimeInputValue('');
+
+    addChatMessage({
+      id: crypto.randomUUID(),
+      role: 'user',
+      content: pendingInputRequest.is_secret
+        ? '🔑 Provided secured credentials: ••••••••'
+        : `💬 Provided input: ${val}`,
+      timestamp: new Date().toISOString(),
+    });
+
+    await sendSidecarInput({
+      action: 'provide_input',
+      input: val,
+      field_name: pendingInputRequest.field_name,
+      thread_id: pendingInputRequest.thread_id,
+    });
+
+    clearPendingInputRequest();
+  };
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -332,6 +360,55 @@ export default function ChatIntake({ activeAgent }) {
               </div>
             )}
           </div>
+
+          {/* ── Mid-Execution Interactive Prompt Banner ── */}
+          {pendingInputRequest && (
+            <div className="border-t border-amber-500/50 bg-amber-950/30 p-3.5 space-y-2.5 animate-in fade-in slide-in-from-bottom duration-200">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Key size={14} className="text-amber-400 shrink-0" />
+                  <span className="text-xs font-semibold text-amber-200">
+                    Agent Information Required
+                  </span>
+                </div>
+                <span className="rounded bg-amber-900/60 px-2 py-0.5 font-mono text-[10px] text-amber-300 border border-amber-700/60">
+                  Execution Paused
+                </span>
+              </div>
+              <p className="text-xs text-zinc-200 leading-relaxed font-sans">
+                {pendingInputRequest.prompt || 'Please provide the required parameter to continue execution:'}
+              </p>
+              <div className="flex items-center gap-2">
+                <input
+                  type={pendingInputRequest.is_secret ? 'password' : 'text'}
+                  value={runtimeInputValue}
+                  onChange={(e) => setRuntimeInputValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSubmitRuntimeInput();
+                    }
+                  }}
+                  placeholder={
+                    pendingInputRequest.is_secret
+                      ? 'Enter secure credential / password / token...'
+                      : 'Enter requested value...'
+                  }
+                  autoFocus
+                  className="flex-1 rounded-lg border border-amber-600/70 bg-zinc-950 px-3.5 py-2 font-mono text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-amber-400 transition-colors"
+                />
+                <button
+                  type="button"
+                  onClick={handleSubmitRuntimeInput}
+                  disabled={!runtimeInputValue.trim()}
+                  className="flex items-center gap-1.5 rounded-lg bg-amber-400 px-3.5 py-2 text-xs font-semibold text-zinc-950 hover:bg-amber-300 transition-colors disabled:opacity-40 shrink-0 shadow-sm"
+                >
+                  <Send size={13} />
+                  <span>Submit to Agent</span>
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Ad-Hoc Command Input */}
           <div className="border-t border-zinc-800/80 bg-[#0d0d10] p-3">

@@ -117,6 +117,8 @@ def main():
         initial_state: AgentState = {
             "user_prompt": prompt,
             "api_key": api_key,
+            "thread_id": tid,
+            "runtime_inputs": {},
             "safety_classification": "pending",
             "safety_reason": "",
             "manifest": None,
@@ -177,13 +179,24 @@ def main():
         data = msg.get("data", {})
         
         if "action" in msg and not msg_type:
-            msg_type = "resume"
-            data = {
-                "decision": "approve" if msg.get("action") == "approve" else "revise",
-                "feedback": msg.get("feedback", ""),
-                "thread_id": msg.get("thread_id", ""),
-            }
+            action_name = msg.get("action")
+            if action_name == "provide_input":
+                msg_type = "provide_input"
+                data = {
+                    "input": msg.get("input", ""),
+                    "field_name": msg.get("field_name", ""),
+                    "thread_id": msg.get("thread_id", ""),
+                }
+            else:
+                msg_type = "resume"
+                data = {
+                    "decision": "approve" if action_name == "approve" else "revise",
+                    "feedback": msg.get("feedback", ""),
+                    "thread_id": msg.get("thread_id", ""),
+                }
         elif msg_type == "start" and not data and "prompt" in msg:
+            data = msg
+        elif msg_type == "provide_input" and not data:
             data = msg
         
         try:
@@ -239,6 +252,51 @@ def main():
                         _emit("status", {
                             "step": "paused",
                             "message": "Awaiting human review in HITL modal",
+                            "thread_id": thread_id,
+                        })
+                    else:
+                        err_msg = str(graph_error) or type(graph_error).__name__
+                        _emit("error", {
+                            "message": f"Resume error: {err_msg}",
+                            "traceback": traceback.format_exc(),
+                        })
+
+            elif msg_type == "provide_input":
+                thread_id = data.get("thread_id", "") or (list(active_threads.keys())[-1] if active_threads else "")
+                user_val = data.get("input", "")
+                field_name = data.get("field_name", "")
+
+                if not thread_id:
+                    _emit("error", {"message": "No active thread to provide input to."})
+                    continue
+
+                if thread_id not in active_threads:
+                    active_threads[thread_id] = {"configurable": {"thread_id": thread_id}}
+
+                config = active_threads[thread_id]
+
+                _emit("status", {
+                    "step": "executing",
+                    "message": "User input provided. Resuming execution...",
+                    "thread_id": thread_id,
+                })
+
+                resume_input = Command(resume={"input": user_val, "field_name": field_name, "status": "provided"})
+
+                try:
+                    for event in compiled_graph.stream(resume_input, config=config):
+                        if isinstance(event, dict) and "__interrupt__" in event:
+                            _emit("status", {
+                                "step": "paused",
+                                "message": "Awaiting input or human review",
+                                "thread_id": thread_id,
+                            })
+                except Exception as graph_error:
+                    error_name = type(graph_error).__name__.lower()
+                    if "interrupt" in error_name or "graphinterrupt" in error_name:
+                        _emit("status", {
+                            "step": "paused",
+                            "message": "Awaiting input or human review",
                             "thread_id": thread_id,
                         })
                     else:
