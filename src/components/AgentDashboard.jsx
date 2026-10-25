@@ -1,19 +1,28 @@
 /**
- * AgentDashboard.jsx - Dashboard for saved agents and health metrics.
+ * AgentDashboard.jsx - Persistent Agent Registry & Audit Explorer
  *
- * Displays agents in a responsive glass-card grid with status badges,
- * relative timestamps, and action buttons.  Includes an execution-log
- * slide-out panel triggered per agent.
+ * High-density management console for agents stored in SQLite database.
+ * Supports running workflows, reviewing execution history logs, and managing records.
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { Play, List, Trash2, Bot, Clock, Activity, X } from 'lucide-react';
+import {
+  Play,
+  List,
+  Trash2,
+  Clock,
+  Activity,
+  X,
+  Search,
+  Database,
+  ExternalLink,
+  CheckCircle2,
+  AlertCircle,
+  FileText,
+} from 'lucide-react';
 import useStore from '../hooks/useStore';
 import useTauri from '../hooks/useTauri';
 
-// ─── Helpers ───────────────────────────────────────────────────────────
-
-/** Convert an ISO string to a relative "time ago" label. */
 function timeAgo(iso) {
   if (!iso) return '';
   const seconds = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
@@ -26,150 +35,6 @@ function timeAgo(iso) {
   return `${days}d ago`;
 }
 
-/** Status badge config. */
-const BADGE = {
-  idle: { bg: 'bg-gray-600/40', text: 'text-gray-300', dot: 'bg-gray-400', label: 'Idle' },
-  running: { bg: 'bg-green-600/20', text: 'text-green-300', dot: 'bg-green-400 animate-pulse', label: 'Running' },
-  paused: { bg: 'bg-yellow-600/20', text: 'text-yellow-300', dot: 'bg-yellow-400', label: 'Paused' },
-  error: { bg: 'bg-red-600/20', text: 'text-red-300', dot: 'bg-red-500', label: 'Error' },
-};
-
-// ─── Agent Card ────────────────────────────────────────────────────────
-
-function AgentCard({ agent, onRun, onViewLogs, onDelete }) {
-  const badge = BADGE[agent.status] ?? BADGE.idle;
-
-  return (
-    <div className="group relative rounded-2xl border border-gray-700/50 bg-gray-800/40 backdrop-blur-lg p-5 shadow-lg transition-all duration-200 hover:border-gray-600 hover:shadow-xl hover:bg-gray-800/60">
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600/20 text-indigo-400">
-            <Bot size={18} />
-          </div>
-          <div className="min-w-0">
-            <h3 className="truncate text-sm font-semibold text-gray-100">
-              {agent.name}
-            </h3>
-            <span
-              className={`mt-0.5 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-medium ${badge.bg} ${badge.text}`}
-            >
-              <span className={`inline-block h-1.5 w-1.5 rounded-full ${badge.dot}`} />
-              {badge.label}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Description */}
-      <p className="mt-3 line-clamp-2 text-xs leading-relaxed text-gray-400">
-        {agent.description || 'No description provided.'}
-      </p>
-
-      {/* Meta */}
-      <div className="mt-4 flex items-center gap-3 text-[11px] text-gray-500">
-        <span className="flex items-center gap-1">
-          <Clock size={11} />
-          {timeAgo(agent.createdAt)}
-        </span>
-        {agent.lastRun && (
-          <span className="flex items-center gap-1">
-            <Activity size={11} />
-            Run {timeAgo(agent.lastRun)}
-          </span>
-        )}
-      </div>
-
-      {/* Actions */}
-      <div className="mt-4 flex items-center gap-2 border-t border-gray-700/40 pt-3">
-        <button
-          onClick={() => onRun(agent)}
-          className="flex items-center gap-1.5 rounded-lg bg-green-600/20 px-3 py-1.5 text-xs font-medium text-green-300 transition-colors hover:bg-green-600/40"
-          title="Run agent"
-        >
-          <Play size={12} /> Run
-        </button>
-        <button
-          onClick={() => onViewLogs(agent)}
-          className="flex items-center gap-1.5 rounded-lg bg-gray-700/30 px-3 py-1.5 text-xs font-medium text-gray-300 transition-colors hover:bg-gray-700/50"
-          title="View execution logs"
-        >
-          <List size={12} /> Logs
-        </button>
-        <button
-          onClick={() => onDelete(agent)}
-          className="ml-auto flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs text-gray-500 transition-colors hover:bg-red-600/20 hover:text-red-400"
-          title="Delete agent"
-        >
-          <Trash2 size={12} />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ─── Execution Log Panel ───────────────────────────────────────────────
-
-function LogPanel({ agent, logs, onClose }) {
-  return (
-    <div className="fixed inset-y-0 right-0 z-40 flex w-full max-w-md flex-col border-l border-gray-700/50 bg-gray-900/95 backdrop-blur-xl shadow-2xl">
-      {/* Panel header */}
-      <div className="flex items-center justify-between border-b border-gray-800 px-5 py-4">
-        <div>
-          <h3 className="text-sm font-semibold text-gray-100">
-            Execution History
-          </h3>
-          <p className="mt-0.5 text-xs text-gray-500 truncate">
-            {agent.name}
-          </p>
-        </div>
-        <button
-          onClick={onClose}
-          className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-200"
-        >
-          <X size={16} />
-        </button>
-      </div>
-
-      {/* Timeline */}
-      <div className="flex-1 overflow-y-auto px-5 py-4">
-        {logs.length === 0 ? (
-          <p className="py-12 text-center text-sm text-gray-500">
-            No execution history yet.
-          </p>
-        ) : (
-          <ol className="relative border-l border-gray-700/60 ml-2">
-            {logs.map((log, i) => (
-              <li key={log.id ?? i} className="mb-6 ml-6">
-                <span className="absolute -left-1.5 flex h-3 w-3 items-center justify-center rounded-full bg-gray-700 ring-4 ring-gray-900">
-                  <span
-                    className={`h-1.5 w-1.5 rounded-full ${
-                      log.status === 'success'
-                        ? 'bg-green-400'
-                        : log.status === 'error'
-                        ? 'bg-red-400'
-                        : 'bg-blue-400'
-                    }`}
-                  />
-                </span>
-                <time className="mb-1 block text-[10px] text-gray-500">
-                  {new Date(log.timestamp).toLocaleString()}
-                </time>
-                <p className="text-xs text-gray-300">{log.summary ?? log.step}</p>
-                {log.detail && (
-                  <p className="mt-1 text-[11px] text-gray-500">{log.detail}</p>
-                )}
-              </li>
-            ))}
-          </ol>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Main Component ────────────────────────────────────────────────────
-
 export default function AgentDashboard({ onSwitchToChat }) {
   const agents = useStore((s) => s.agents);
   const setAgents = useStore((s) => s.setAgents);
@@ -179,10 +44,10 @@ export default function AgentDashboard({ onSwitchToChat }) {
 
   const { getAgents, getExecutionHistory, deleteAgent } = useTauri();
 
-  const [logAgent, setLogAgent] = useState(null);
+  const [search, setSearch] = useState('');
+  const [selectedAgent, setSelectedAgent] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Fetch agents on mount.
   useEffect(() => {
     (async () => {
       setLoading(true);
@@ -191,8 +56,6 @@ export default function AgentDashboard({ onSwitchToChat }) {
       setLoading(false);
     })();
   }, [getAgents, setAgents]);
-
-  // ── Actions ─────────────────────────────────────────────────────
 
   const handleRun = useCallback(
     (agent) => {
@@ -204,9 +67,9 @@ export default function AgentDashboard({ onSwitchToChat }) {
 
   const handleViewLogs = useCallback(
     async (agent) => {
+      setSelectedAgent(agent);
       const { data } = await getExecutionHistory(agent.id);
-      setExecutionLogs(data ?? []);
-      setLogAgent(agent);
+      setExecutionLogs(data || []);
     },
     [getExecutionHistory, setExecutionLogs]
   );
@@ -217,65 +80,187 @@ export default function AgentDashboard({ onSwitchToChat }) {
       const { data } = await getAgents();
       if (data) setAgents(data);
       else setAgents(agents.filter((a) => a.id !== agent.id));
+      if (selectedAgent?.id === agent.id) {
+        setSelectedAgent(null);
+      }
     },
-    [deleteAgent, getAgents, agents, setAgents]
+    [deleteAgent, getAgents, agents, setAgents, selectedAgent]
   );
 
-  // ─── Render ─────────────────────────────────────────────────────
+  const filteredAgents = agents.filter(
+    (a) =>
+      a.name.toLowerCase().includes(search.toLowerCase()) ||
+      (a.description && a.description.toLowerCase().includes(search.toLowerCase()))
+  );
+
   return (
-    <div className="relative h-full overflow-y-auto px-6 py-6">
-      {/* Header */}
-      <div className="mb-6 flex items-center justify-between">
+    <div className="flex h-full flex-col bg-[#09090b] text-zinc-200">
+      {/* ── Sub Header ────────────────────────────────────────── */}
+      <div className="flex shrink-0 items-center justify-between border-b border-zinc-800/80 bg-[#0d0d10] px-6 py-3">
         <div className="flex items-center gap-3">
-          <h2 className="text-xl font-bold text-gray-100">Agent Library</h2>
-          <span className="rounded-full bg-indigo-600/20 px-2.5 py-0.5 text-xs font-medium text-indigo-300">
-            {agents.length}
+          <div className="flex items-center gap-2">
+            <Database size={16} className="text-zinc-400" />
+            <h2 className="text-sm font-semibold text-zinc-100">SQLite Agent Registry</h2>
+          </div>
+          <span className="rounded bg-zinc-800 px-2 py-0.5 font-mono text-[11px] text-zinc-400">
+            {agents.length} saved
           </span>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <Search size={13} className="absolute left-3 top-2.5 text-zinc-500" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search agents..."
+              className="rounded-lg border border-zinc-800 bg-zinc-950 pl-8 pr-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-600 outline-none focus:border-zinc-700 transition-colors w-48 sm:w-64"
+            />
+          </div>
         </div>
       </div>
 
-      {/* Grid / Empty State */}
-      {loading ? (
-        <div className="flex h-64 items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-600 border-t-indigo-400" />
-        </div>
-      ) : agents.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-24 text-gray-500">
-          <Bot size={56} strokeWidth={1} className="mb-4 text-gray-600" />
-          <p className="text-lg font-medium text-gray-400">No agents yet</p>
-          <p className="mt-1 text-sm">
-            Create one from the <span className="text-blue-400">Chat</span> tab.
-          </p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {agents.map((agent) => (
-            <AgentCard
-              key={agent.id}
-              agent={agent}
-              onRun={handleRun}
-              onViewLogs={handleViewLogs}
-              onDelete={handleDelete}
-            />
-          ))}
-        </div>
-      )}
+      {/* ── Main Content Area ─────────────────────────────────── */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Table / Grid */}
+        <div className="flex-1 overflow-y-auto p-6">
+          {loading ? (
+            <div className="flex h-64 items-center justify-center text-xs text-zinc-500">
+              Loading registry records...
+            </div>
+          ) : filteredAgents.length === 0 ? (
+            <div className="flex h-64 flex-col items-center justify-center text-center text-zinc-500">
+              <Database size={36} className="mb-2 text-zinc-700" />
+              <p className="text-sm font-medium text-zinc-400">No agents found</p>
+              <p className="mt-1 text-xs text-zinc-600">
+                Execute a task from the console to automatically persist an agent record.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+              {filteredAgents.map((agent) => (
+                <div
+                  key={agent.id}
+                  className="flex flex-col justify-between rounded-lg border border-zinc-800/80 bg-zinc-900/40 p-4 transition-all hover:border-zinc-700 hover:bg-zinc-900/60"
+                >
+                  <div>
+                    <div className="flex items-start justify-between gap-2">
+                      <h3 className="truncate text-xs font-semibold text-zinc-100">
+                        {agent.name}
+                      </h3>
+                      <span
+                        className={`rounded px-1.5 py-0.5 text-[10px] font-mono font-medium uppercase ${
+                          agent.status === 'running'
+                            ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-800/40'
+                            : agent.status === 'paused'
+                            ? 'bg-amber-950/40 text-amber-400 border border-amber-800/40'
+                            : 'bg-zinc-800 text-zinc-400'
+                        }`}
+                      >
+                        {agent.status}
+                      </span>
+                    </div>
 
-      {/* Slide-out log panel */}
-      {logAgent && (
-        <>
-          {/* Backdrop */}
-          <div
-            className="fixed inset-0 z-30 bg-black/40 backdrop-blur-sm"
-            onClick={() => setLogAgent(null)}
-          />
-          <LogPanel
-            agent={logAgent}
-            logs={executionLogs}
-            onClose={() => setLogAgent(null)}
-          />
-        </>
-      )}
+                    <p className="mt-2 line-clamp-2 text-[11px] text-zinc-400 leading-relaxed">
+                      {agent.description || 'No description provided.'}
+                    </p>
+
+                    <div className="mt-3 flex items-center gap-3 text-[10px] font-mono text-zinc-500">
+                      <span>ID: {agent.id.slice(0, 8)}</span>
+                      <span>Created: {timeAgo(agent.createdAt)}</span>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex items-center justify-between border-t border-zinc-800/60 pt-3">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleRun(agent)}
+                        className="flex items-center gap-1 rounded bg-zinc-800 px-2.5 py-1 text-[11px] font-medium text-zinc-200 hover:bg-zinc-700 transition-colors"
+                      >
+                        <Play size={10} fill="currentColor" />
+                        Execute
+                      </button>
+
+                      <button
+                        onClick={() => handleViewLogs(agent)}
+                        className="flex items-center gap-1 rounded border border-zinc-800 px-2.5 py-1 text-[11px] text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-colors"
+                      >
+                        <List size={11} />
+                        Audit
+                      </button>
+                    </div>
+
+                    <button
+                      onClick={() => handleDelete(agent)}
+                      className="rounded p-1 text-zinc-500 hover:bg-rose-950/40 hover:text-rose-400 transition-colors"
+                      title="Delete record"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Audit Log Drawer (when selected) */}
+        {selectedAgent && (
+          <div className="flex w-96 flex-col border-l border-zinc-800 bg-[#0c0c0f]">
+            <div className="flex shrink-0 items-center justify-between border-b border-zinc-800 px-4 py-3">
+              <div>
+                <h3 className="text-xs font-semibold text-zinc-100">Audit Trail</h3>
+                <p className="mt-0.5 truncate text-[11px] text-zinc-500">
+                  {selectedAgent.name}
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedAgent(null)}
+                className="rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+              >
+                <X size={14} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4">
+              {executionLogs.length === 0 ? (
+                <p className="py-12 text-center text-xs text-zinc-600">
+                  No execution logs recorded yet.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {executionLogs.map((log, i) => (
+                    <div
+                      key={log.id || i}
+                      className="rounded-lg border border-zinc-800/80 bg-zinc-900/40 p-2.5 font-mono text-[11px]"
+                    >
+                      <div className="flex items-center justify-between text-[10px] text-zinc-500">
+                        <span>{log.step || 'Execution Step'}</span>
+                        <span
+                          className={
+                            log.status === 'success'
+                              ? 'text-emerald-400'
+                              : 'text-rose-400'
+                          }
+                        >
+                          {log.status}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-zinc-300 font-sans text-xs">
+                        {log.summary || log.detail || 'Step completed'}
+                      </p>
+                      <span className="mt-1.5 block text-[10px] text-zinc-600">
+                        {new Date(log.timestamp).toLocaleString()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

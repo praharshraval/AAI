@@ -11,7 +11,7 @@
 //! The database file is stored at:
 //! `<data_local_dir>/rpa-agent-platform/data.db`
 
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use rusqlite::{params, Connection, Result as SqlResult};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;

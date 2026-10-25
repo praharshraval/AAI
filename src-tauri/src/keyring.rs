@@ -18,7 +18,7 @@
 //!   at `<data_local_dir>/rpa-agent-platform/vault.json`.
 
 use aes_gcm::{
-    aead::{Aead, KeyInit, OsRng},
+    aead::{Aead, KeyInit},
     Aes256Gcm, Nonce,
 };
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};

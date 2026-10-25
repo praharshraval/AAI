@@ -132,7 +132,7 @@ async fn start_agent_task(
         return Err("Prompt cannot be empty".into());
     }
 
-    // 1. Resolve API key
+    // 1. Resolve API key (supports cloud Gemini or built-in local engine)
     let key = if let Some(k) = api_key {
         let trimmed_k = k.trim().to_string();
         if !trimmed_k.is_empty() {
@@ -140,18 +140,20 @@ async fn start_agent_task(
             trimmed_k
         } else {
             keyring::get_gemini_key()
-                .map_err(|e| e.to_string())?
-                .ok_or_else(|| "Gemini API key is not configured. Please add your key in Settings.".to_string())?
+                .unwrap_or(None)
+                .unwrap_or_else(|| "local-mode".to_string())
         }
     } else {
         keyring::get_gemini_key()
-            .map_err(|e| e.to_string())?
-            .ok_or_else(|| "Gemini API key is not configured. Please add your key in Settings.".to_string())?
+            .unwrap_or(None)
+            .unwrap_or_else(|| "local-mode".to_string())
     };
 
-    if key.trim().is_empty() {
-        return Err("Gemini API key is not configured. Please configure it in Settings.".into());
-    }
+    let key = if key.trim().is_empty() {
+        "local-mode".to_string()
+    } else {
+        key
+    };
 
     // 2. Kill any currently running sidecar process
     {
@@ -191,25 +193,43 @@ async fn start_agent_task(
 
     // 4. Resolve Python executable
     let home = std::env::var("HOME").unwrap_or_else(|_| "".into());
-    let candidates = [
-        format!("{}/.gemini/antigravity/scratch/rpa-agent-platform/python-engine/.venv/bin/python", home),
-        format!("{}/.local/share/uv/python/cpython-3.11-macos-aarch64-none/bin/python3.11", home),
-        format!("{}/.local/bin/python3", home),
-        "python3".into(),
-        "python".into(),
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+
+    let python_candidates = [
+        cwd.join("python-engine/.venv/bin/python"),
+        std::path::PathBuf::from(format!("{}/.gemini/antigravity/scratch/rpa-agent-platform/python-engine/.venv/bin/python", home)),
+        std::path::PathBuf::from(format!("{}/.local/share/uv/python/cpython-3.11-macos-aarch64-none/bin/python3.11", home)),
+        std::path::PathBuf::from(format!("{}/.local/bin/python3", home)),
+        std::path::PathBuf::from("python3"),
+        std::path::PathBuf::from("python"),
     ];
 
     let mut python_bin = "python3".to_string();
-    for cand in &candidates {
-        if std::path::Path::new(cand).exists() {
-            python_bin = cand.clone();
+    for cand in &python_candidates {
+        if cand.exists() {
+            python_bin = cand.to_string_lossy().to_string();
             break;
         }
     }
 
     // 5. Paths
-    let main_py = format!("{}/.gemini/antigravity/scratch/rpa-agent-platform/python-engine/main.py", home);
-    let working_dir = format!("{}/.gemini/antigravity/scratch/rpa-agent-platform/python-engine", home);
+    let main_py_candidates = [
+        cwd.join("python-engine/main.py"),
+        std::path::PathBuf::from(format!("{}/.gemini/antigravity/scratch/rpa-agent-platform/python-engine/main.py", home)),
+    ];
+
+    let mut main_py = format!("{}/.gemini/antigravity/scratch/rpa-agent-platform/python-engine/main.py", home);
+    let mut working_dir = format!("{}/.gemini/antigravity/scratch/rpa-agent-platform/python-engine", home);
+
+    for cand in &main_py_candidates {
+        if cand.exists() {
+            main_py = cand.to_string_lossy().to_string();
+            if let Some(parent) = cand.parent() {
+                working_dir = parent.to_string_lossy().to_string();
+            }
+            break;
+        }
+    }
 
     tracing::info!("Spawning Python engine with {} at {}", python_bin, main_py);
 

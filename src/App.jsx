@@ -1,18 +1,19 @@
 /**
  * App.jsx - Main application shell for the RPA Agent Platform.
  *
- * Provides the dark-themed layout with a collapsible sidebar, top bar,
- * and conditional rendering of modals and content panels.
+ * Provides a high-performance desktop engineering layout with collapsible navigation,
+ * real-time engine telemetry, and clean window chrome.
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  MessageSquare,
-  Bot,
+  Terminal,
+  Database,
   Settings,
-  Cpu,
+  Activity,
   ChevronLeft,
   ChevronRight,
+  ShieldCheck,
 } from 'lucide-react';
 import useStore from './hooks/useStore';
 import useTauri from './hooks/useTauri';
@@ -21,27 +22,10 @@ import AgentDashboard from './components/AgentDashboard';
 import PreviewModal from './components/PreviewModal';
 import SettingsModal from './components/SettingsModal';
 
-// ─── Sidebar nav items ────────────────────────────────────────────────
-
 const NAV_ITEMS = [
-  { id: 'chat', label: 'Chat', icon: MessageSquare },
-  { id: 'agents', label: 'Agents', icon: Bot },
+  { id: 'chat', label: 'Console & Orchestration', icon: Terminal },
+  { id: 'agents', label: 'Agent Registry', icon: Database },
 ];
-
-// ─── Sidecar status config ─────────────────────────────────────────────
-
-const STATUS_CONFIG = {
-  idle: { color: 'bg-gray-400', text: 'text-gray-400', label: 'Idle' },
-  running: {
-    color: 'bg-green-400 animate-pulse',
-    text: 'text-green-400',
-    label: 'Running',
-  },
-  paused: { color: 'bg-yellow-400', text: 'text-yellow-300', label: 'Paused' },
-  error: { color: 'bg-red-500', text: 'text-red-400', label: 'Error' },
-};
-
-// ─── Main App ──────────────────────────────────────────────────────────
 
 export default function App() {
   const sidecarStatus = useStore((s) => s.sidecarStatus);
@@ -54,9 +38,6 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [sidebarExpanded, setSidebarExpanded] = useState(true);
 
-  const statusCfg = STATUS_CONFIG[sidecarStatus] ?? STATUS_CONFIG.idle;
-
-  // ── Initialisation: check API key & run preflight ───────────────
   useEffect(() => {
     (async () => {
       const { data: hasKey } = await hasApiKey();
@@ -65,109 +46,123 @@ export default function App() {
       const { data: pf } = await runPreflightCheck();
       if (pf) updateSettings({ preflightStatus: pf });
     })();
-    // Run only once on mount.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [hasApiKey, runPreflightCheck, updateSettings]);
 
   const switchToChat = useCallback(() => setActiveTab('chat'), []);
 
-  // ─── Render ─────────────────────────────────────────────────────
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-gray-950 text-gray-100 select-none">
+    <div className="flex h-screen w-screen overflow-hidden bg-[#09090b] text-zinc-100 select-none font-sans">
       {/* ── Sidebar ──────────────────────────────────────────────── */}
       <aside
-        className={`flex flex-col border-r border-gray-800/60 bg-gray-900/70 backdrop-blur-xl transition-all duration-300 ${
-          sidebarExpanded ? 'w-56' : 'w-16'
+        className={`flex flex-col border-r border-zinc-800 bg-[#0d0d10] transition-all duration-200 ${
+          sidebarExpanded ? 'w-56' : 'w-14'
         }`}
       >
-        {/* Logo area */}
-        <div className="flex h-14 items-center gap-2.5 border-b border-gray-800/60 px-4">
-          <Cpu size={20} className="shrink-0 text-indigo-400" />
+        {/* Logo / Brand Header */}
+        <div className="flex h-12 items-center gap-2.5 border-b border-zinc-800 px-3.5">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-zinc-100 text-zinc-900 font-bold font-mono text-xs">
+            A
+          </div>
           {sidebarExpanded && (
-            <span className="truncate text-sm font-bold tracking-tight text-gray-100">
-              RPA Platform
-            </span>
+            <div className="min-w-0">
+              <span className="truncate text-xs font-bold tracking-tight text-zinc-100">
+                AAI Platform
+              </span>
+              <span className="block text-[9px] font-mono text-zinc-500 uppercase">
+                Desktop RPA v2.4
+              </span>
+            </div>
           )}
         </div>
 
-        {/* Nav items */}
-        <nav className="flex-1 space-y-1 px-2 py-3">
+        {/* Navigation Items */}
+        <nav className="flex-1 space-y-1 p-2">
           {NAV_ITEMS.map(({ id, label, icon: Icon }) => {
             const active = activeTab === id;
             return (
               <button
                 key={id}
                 onClick={() => setActiveTab(id)}
-                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
+                className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium transition-colors ${
                   active
-                    ? 'bg-indigo-600/20 text-indigo-300 shadow-sm'
-                    : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'
+                    ? 'bg-zinc-800 text-zinc-100'
+                    : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'
                 }`}
                 title={label}
               >
-                <Icon size={18} className="shrink-0" />
-                {sidebarExpanded && <span>{label}</span>}
+                <Icon size={15} className="shrink-0" />
+                {sidebarExpanded && <span className="truncate">{label}</span>}
               </button>
             );
           })}
         </nav>
 
-        {/* Bottom controls */}
-        <div className="space-y-1 border-t border-gray-800/60 px-2 py-3">
+        {/* Bottom Actions */}
+        <div className="border-t border-zinc-800 p-2 space-y-1">
           <button
             onClick={() => setIsSettingsOpen(true)}
-            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-gray-400 transition-all hover:bg-gray-800/50 hover:text-gray-200"
-            title="Settings"
+            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200 transition-colors"
+            title="Settings & System Diagnostics"
           >
-            <Settings size={18} className="shrink-0" />
+            <Settings size={15} className="shrink-0" />
             {sidebarExpanded && <span>Settings</span>}
           </button>
 
           <button
             onClick={() => setSidebarExpanded(!sidebarExpanded)}
-            className="flex w-full items-center justify-center rounded-xl py-2 text-gray-500 transition-colors hover:bg-gray-800/50 hover:text-gray-300"
+            className="flex w-full items-center justify-center rounded-lg py-1.5 text-zinc-500 hover:bg-zinc-800/60 hover:text-zinc-300 transition-colors"
             title={sidebarExpanded ? 'Collapse sidebar' : 'Expand sidebar'}
           >
-            {sidebarExpanded ? (
-              <ChevronLeft size={16} />
-            ) : (
-              <ChevronRight size={16} />
-            )}
+            {sidebarExpanded ? <ChevronLeft size={14} /> : <ChevronRight size={14} />}
           </button>
         </div>
       </aside>
 
-      {/* ── Main Area ────────────────────────────────────────────── */}
+      {/* ── Main Work Area ────────────────────────────────────────── */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        {/* Top bar */}
-        <header className="flex h-14 shrink-0 items-center justify-between border-b border-gray-800/60 bg-gray-900/40 backdrop-blur-md px-6">
-          <h1 className="text-sm font-semibold text-gray-300 tracking-wide">
-            {activeTab === 'chat' ? 'Chat · Prompt Intake' : 'Agent Library'}
-          </h1>
+        {/* Top Header */}
+        <header className="flex h-12 shrink-0 items-center justify-between border-b border-zinc-800 bg-[#0d0d10] px-6">
+          <div className="flex items-center gap-3 text-xs">
+            <span className="font-semibold text-zinc-200">
+              {activeTab === 'chat'
+                ? 'Automation Console & Orchestration'
+                : 'Persistent Agent Registry'}
+            </span>
+            <span className="text-zinc-600">/</span>
+            <span className="text-zinc-500 font-mono text-[11px]">
+              Local-First Desktop Engine
+            </span>
+          </div>
 
-          <div className="flex items-center gap-4">
-            {/* Sidecar status */}
-            <div className="flex items-center gap-2 rounded-full bg-gray-800/60 px-3 py-1.5 text-xs">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 rounded border border-zinc-800 bg-zinc-900/60 px-2 py-1 text-xs">
               <span
-                className={`inline-block h-2 w-2 rounded-full ${statusCfg.color}`}
+                className={`h-1.5 w-1.5 rounded-full ${
+                  sidecarStatus === 'running'
+                    ? 'bg-emerald-400 animate-pulse'
+                    : sidecarStatus === 'paused'
+                    ? 'bg-amber-400'
+                    : sidecarStatus === 'error'
+                    ? 'bg-rose-500'
+                    : 'bg-zinc-500'
+                }`}
               />
-              <span className={statusCfg.text}>
-                Sidecar: {statusCfg.label}
+              <span className="font-mono text-[11px] text-zinc-300 capitalize">
+                {sidecarStatus}
               </span>
             </div>
 
-            {/* Settings button */}
             <button
               onClick={() => setIsSettingsOpen(true)}
-              className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-800/60 hover:text-gray-200"
+              className="rounded p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-colors"
               title="Settings"
             >
-              <Settings size={16} />
+              <Settings size={15} />
             </button>
           </div>
         </header>
 
-        {/* Content */}
+        {/* Active Panel */}
         <main className="flex-1 overflow-hidden">
           {activeTab === 'chat' && <ChatIntake />}
           {activeTab === 'agents' && (

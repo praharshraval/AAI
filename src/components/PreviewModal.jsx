@@ -1,8 +1,9 @@
 /**
- * PreviewModal.jsx - Human-In-The-Loop (HITL) interactive preview modal.
+ * PreviewModal.jsx - Human-In-The-Loop (HITL) Deliverable Inspector
  *
- * Displays draft artefacts for user review before the sidecar executes them.
- * Supports approve / request-changes / incremental revision workflow.
+ * Professional verification drawer and approval console.
+ * Allows users to review generated automation deliverables, inspect source formatting,
+ * and issue revision requests with custom feedback before final persistence.
  */
 
 import React, { useState, useCallback } from 'react';
@@ -12,89 +13,21 @@ import {
   Check,
   Edit3,
   Loader2,
-  FileJson,
+  FileCode,
   FileSpreadsheet,
+  CornerDownLeft,
+  Eye,
+  Code2,
 } from 'lucide-react';
 import useStore from '../hooks/useStore';
 import useTauri from '../hooks/useTauri';
 
-// ─── Helpers ───────────────────────────────────────────────────────────
-
-/** Pick an icon component based on file type. */
-function FileIcon({ type }) {
-  switch (type) {
-    case 'json':
-      return <FileJson size={18} className="text-amber-400" />;
-    case 'csv':
-      return <FileSpreadsheet size={18} className="text-green-400" />;
-    default:
-      return <FileText size={18} className="text-blue-400" />;
-  }
-}
-
-/** Badge colour per file type. */
-const TYPE_BADGE = {
-  pdf: 'bg-red-600/20 text-red-300',
-  text: 'bg-blue-600/20 text-blue-300',
-  csv: 'bg-green-600/20 text-green-300',
-  json: 'bg-amber-600/20 text-amber-300',
-};
-
-/** Simple line-number gutter + content renderer. */
-function LineNumberedContent({ text }) {
-  const lines = text.split('\n');
-  return (
-    <div className="flex text-xs font-mono">
-      {/* Gutter */}
-      <div className="select-none pr-4 text-right text-gray-600 border-r border-gray-700/50 mr-4 shrink-0">
-        {lines.map((_, i) => (
-          <div key={i} className="leading-5">
-            {i + 1}
-          </div>
-        ))}
-      </div>
-      {/* Content */}
-      <pre className="flex-1 overflow-x-auto leading-5 text-gray-300 whitespace-pre">
-        {text}
-      </pre>
-    </div>
-  );
-}
-
-/** Minimal JSON syntax colouring via string replacement. */
-function JsonHighlighter({ text }) {
-  // Tokenise keys, strings, numbers, booleans, and null.
-  const html = text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    // Keys
-    .replace(
-      /("(?:[^"\\]|\\.)*")\s*:/g,
-      '<span class="text-indigo-400">$1</span>:'
-    )
-    // String values
-    .replace(
-      /:\s*("(?:[^"\\]|\\.)*")/g,
-      ': <span class="text-green-400">$1</span>'
-    )
-    // Numbers
-    .replace(/:\s*(-?\d+\.?\d*)/g, ': <span class="text-amber-300">$1</span>')
-    // Booleans & null
-    .replace(
-      /:\s*(true|false|null)/g,
-      ': <span class="text-rose-400">$1</span>'
-    );
-
-  return (
-    <pre
-      className="text-xs font-mono leading-5 text-gray-300"
-      dangerouslySetInnerHTML={{ __html: html }}
-    />
-  );
-}
-
-// ─── Main Component ────────────────────────────────────────────────────
+const FAST_FEEDBACK = [
+  'Add executive summary metrics at the top',
+  'Format data into structured Markdown tables',
+  'Include actionable recommendations section',
+  'Summarize key variance findings',
+];
 
 export default function PreviewModal() {
   const previewData = useStore((s) => s.previewData);
@@ -104,179 +37,173 @@ export default function PreviewModal() {
 
   const { sendSidecarInput } = useTauri();
 
-  const [isRequestingChanges, setIsRequestingChanges] = useState(false);
   const [feedback, setFeedback] = useState('');
-  const [revision, setRevision] = useState(1);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [viewMode, setViewMode] = useState('formatted'); // 'formatted' | 'raw'
 
   if (!isOpen || !previewData) return null;
 
-  const { type, content, filename, metadata } = previewData;
-  const badgeClass = TYPE_BADGE[type] ?? TYPE_BADGE.text;
+  const { type, content, filename, metadata, revision } = previewData;
 
-  // ── Approve ─────────────────────────────────────────────────────
-  const handleApprove = useCallback(async () => {
-    setIsLoading(true);
+  const handleApprove = async () => {
+    setIsSubmitting(true);
     await sendSidecarInput({ action: 'approve' });
     setSidecarStatus('running');
     closePreview();
-    setIsLoading(false);
-    setRevision(1);
-    setIsRequestingChanges(false);
-    setFeedback('');
-  }, [sendSidecarInput, setSidecarStatus, closePreview]);
+    setIsSubmitting(false);
+  };
 
-  // ── Submit feedback ─────────────────────────────────────────────
-  const handleSubmitFeedback = useCallback(async () => {
+  const handleRequestRevision = async () => {
     if (!feedback.trim()) return;
-    setIsLoading(true);
+    setIsSubmitting(true);
     await sendSidecarInput({
       action: 'request_changes',
       feedback: feedback.trim(),
     });
     setFeedback('');
-    setRevision((r) => r + 1);
-    setIsLoading(false);
-    // Keep modal open – the sidecar will push an updated preview.
-  }, [feedback, sendSidecarInput]);
+    setIsSubmitting(false);
+  };
 
-  // ─── Render ─────────────────────────────────────────────────────
+  const lines = (content || '').split('\n');
+  const wordCount = (content || '').trim().split(/\s+/).filter(Boolean).length;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="flex max-h-[85vh] w-full max-w-4xl flex-col rounded-2xl border border-gray-700/50 bg-gray-900 shadow-2xl">
-        {/* ── Header ─────────────────────────────────────────────── */}
-        <div className="flex items-center justify-between border-b border-gray-800 px-6 py-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
+      <div className="flex h-[90vh] w-full max-w-5xl flex-col rounded-xl border border-zinc-800 bg-[#0d0d11] shadow-2xl overflow-hidden">
+        {/* ── Modal Header ─────────────────────────────────────── */}
+        <div className="flex shrink-0 items-center justify-between border-b border-zinc-800 bg-[#121216] px-6 py-3.5">
           <div className="flex items-center gap-3">
-            <FileIcon type={type} />
+            <div className="flex h-8 w-8 items-center justify-center rounded bg-zinc-800 text-zinc-300">
+              {type === 'csv' ? <FileSpreadsheet size={16} /> : <FileText size={16} />}
+            </div>
             <div>
-              <h2 className="text-sm font-semibold text-gray-100">
-                {filename}
-              </h2>
-              <div className="mt-0.5 flex items-center gap-2">
-                <span
-                  className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase ${badgeClass}`}
-                >
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-semibold text-zinc-100">{filename}</h2>
+                <span className="rounded bg-zinc-800 px-2 py-0.5 font-mono text-[10px] text-zinc-400 uppercase">
                   {type}
                 </span>
-                <span className="text-[10px] text-gray-500">
-                  Revision {revision}
+                <span className="rounded bg-amber-950/40 border border-amber-800/40 px-2 py-0.5 font-mono text-[10px] text-amber-300">
+                  Revision {revision || 1}
                 </span>
               </div>
+              <p className="mt-0.5 text-[11px] text-zinc-500">
+                Human-in-the-Loop review checkpoint · {lines.length} lines · {wordCount} words
+              </p>
             </div>
           </div>
-          <button
-            onClick={() => {
-              closePreview();
-              setRevision(1);
-              setIsRequestingChanges(false);
-              setFeedback('');
-            }}
-            className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-200"
-            title="Close"
-          >
-            <X size={18} />
-          </button>
+
+          <div className="flex items-center gap-2">
+            <div className="flex rounded-lg border border-zinc-800 bg-zinc-900 p-0.5 text-xs">
+              <button
+                onClick={() => setViewMode('formatted')}
+                className={`flex items-center gap-1.5 rounded px-2.5 py-1 transition-colors ${
+                  viewMode === 'formatted'
+                    ? 'bg-zinc-800 text-zinc-100'
+                    : 'text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                <Eye size={12} />
+                Preview
+              </button>
+              <button
+                onClick={() => setViewMode('raw')}
+                className={`flex items-center gap-1.5 rounded px-2.5 py-1 transition-colors ${
+                  viewMode === 'raw'
+                    ? 'bg-zinc-800 text-zinc-100'
+                    : 'text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                <Code2 size={12} />
+                Source
+              </button>
+            </div>
+
+            <button
+              onClick={closePreview}
+              className="rounded p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-colors"
+            >
+              <X size={16} />
+            </button>
+          </div>
         </div>
 
-        {/* ── Content ────────────────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto px-6 py-4">
-          {isLoading ? (
-            <div className="flex h-48 items-center justify-center">
-              <Loader2 size={28} className="animate-spin text-indigo-400" />
-              <span className="ml-3 text-sm text-gray-400">
-                Waiting for updated draft…
-              </span>
-            </div>
-          ) : type === 'pdf' ? (
-            <div className="flex h-48 flex-col items-center justify-center rounded-xl border border-dashed border-gray-700 text-sm text-gray-500">
-              <FileText size={32} className="mb-2 text-gray-600" />
-              <p>PDF preview generated at:</p>
-              <code className="mt-1 rounded bg-gray-800 px-2 py-1 text-xs text-gray-400">
-                {metadata?.path ?? filename}
-              </code>
-            </div>
-          ) : type === 'json' ? (
-            <div className="rounded-xl bg-gray-950/50 p-4 overflow-x-auto">
-              <JsonHighlighter text={content} />
+        {/* ── Document Body ────────────────────────────────────── */}
+        <div className="flex-1 overflow-y-auto bg-[#09090b] p-6">
+          {viewMode === 'formatted' ? (
+            <div className="mx-auto max-w-3xl space-y-4 font-sans text-sm leading-relaxed text-zinc-300">
+              {content ? (
+                <div className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-zinc-300 bg-zinc-950/80 p-5 rounded-lg border border-zinc-800/80">
+                  {content}
+                </div>
+              ) : (
+                <p className="text-zinc-500 italic">No output text generated for this deliverable.</p>
+              )}
             </div>
           ) : (
-            <div className="rounded-xl bg-gray-950/50 p-4 overflow-x-auto">
-              <LineNumberedContent text={content} />
-            </div>
-          )}
-
-          {/* Diff placeholder (metadata may contain original for comparison) */}
-          {metadata?.original && revision > 1 && (
-            <div className="mt-4 rounded-xl border border-gray-700/40 bg-gray-950/30 p-4">
-              <h4 className="mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                Previous Version (Diff)
-              </h4>
-              <div className="grid grid-cols-2 gap-4 text-xs font-mono">
-                <div>
-                  <p className="mb-1 text-red-400 text-[10px]">Original</p>
-                  <pre className="whitespace-pre-wrap text-gray-500 line-through">
-                    {metadata.original}
-                  </pre>
-                </div>
-                <div>
-                  <p className="mb-1 text-green-400 text-[10px]">Updated</p>
-                  <pre className="whitespace-pre-wrap text-gray-300">
-                    {content}
-                  </pre>
-                </div>
+            <div className="flex font-mono text-xs leading-relaxed">
+              {/* Line numbers gutter */}
+              <div className="select-none pr-4 text-right text-zinc-600 border-r border-zinc-800/80 mr-4 shrink-0">
+                {lines.map((_, i) => (
+                  <div key={i}>{i + 1}</div>
+                ))}
               </div>
+              <pre className="flex-1 overflow-x-auto text-zinc-300 whitespace-pre">
+                {content}
+              </pre>
             </div>
           )}
         </div>
 
-        {/* ── Change Request Area ─────────────────────────────────── */}
-        {isRequestingChanges && (
-          <div className="border-t border-gray-800 px-6 py-4">
-            <textarea
-              value={feedback}
-              onChange={(e) => setFeedback(e.target.value)}
-              placeholder="Describe what should be changed…"
-              rows={3}
-              className="w-full resize-none rounded-xl border border-gray-700 bg-gray-800/70 px-4 py-2.5 text-sm text-gray-200 placeholder-gray-500 outline-none transition-colors focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500/30"
-            />
-            <div className="mt-2 flex justify-end">
+        {/* ── Review Action Footer ─────────────────────────────── */}
+        <div className="shrink-0 border-t border-zinc-800 bg-[#121216] p-4">
+          <div className="mb-3 flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] font-medium text-zinc-400 mr-1">Feedback Presets:</span>
+            {FAST_FEEDBACK.map((preset) => (
               <button
-                onClick={handleSubmitFeedback}
-                disabled={!feedback.trim() || isLoading}
-                className="flex items-center gap-1.5 rounded-lg bg-yellow-600/80 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-yellow-500 disabled:opacity-40 disabled:cursor-not-allowed"
+                key={preset}
+                onClick={() => setFeedback(preset)}
+                className="rounded border border-zinc-800 bg-zinc-900/80 px-2 py-0.5 text-[11px] text-zinc-400 hover:border-zinc-700 hover:text-zinc-200 transition-colors"
               >
-                {isLoading ? (
-                  <Loader2 size={14} className="animate-spin" />
+                {preset}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center gap-3">
+            <div className="relative flex-1 w-full">
+              <input
+                type="text"
+                value={feedback}
+                onChange={(e) => setFeedback(e.target.value)}
+                placeholder="Optional revision directive or change instructions..."
+                className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3.5 py-2 text-xs text-zinc-200 placeholder-zinc-600 outline-none focus:border-zinc-600 transition-colors"
+              />
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end">
+              <button
+                onClick={handleRequestRevision}
+                disabled={!feedback.trim() || isSubmitting}
+                className="flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-2 text-xs font-semibold text-zinc-200 hover:bg-zinc-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Edit3 size={13} />
+                Request Changes
+              </button>
+
+              <button
+                onClick={handleApprove}
+                disabled={isSubmitting}
+                className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-5 py-2 text-xs font-semibold text-white hover:bg-emerald-500 transition-colors shadow-sm disabled:opacity-40"
+              >
+                {isSubmitting ? (
+                  <Loader2 size={13} className="animate-spin" />
                 ) : (
-                  <Edit3 size={14} />
+                  <Check size={13} />
                 )}
-                Submit Feedback
+                Approve & Persist Deliverable
               </button>
             </div>
           </div>
-        )}
-
-        {/* ── Footer Actions ─────────────────────────────────────── */}
-        <div className="flex items-center justify-end gap-3 border-t border-gray-800 px-6 py-4">
-          <button
-            onClick={() => setIsRequestingChanges(!isRequestingChanges)}
-            className="flex items-center gap-2 rounded-xl border border-yellow-600/50 bg-yellow-600/10 px-5 py-2.5 text-sm font-medium text-yellow-300 transition-all hover:bg-yellow-600/20"
-          >
-            <Edit3 size={15} />
-            {isRequestingChanges ? 'Cancel Changes' : 'Request Changes'}
-          </button>
-          <button
-            onClick={handleApprove}
-            disabled={isLoading}
-            className="flex items-center gap-2 rounded-xl bg-green-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-green-900/30 transition-all hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isLoading ? (
-              <Loader2 size={15} className="animate-spin" />
-            ) : (
-              <Check size={15} />
-            )}
-            Approve &amp; Execute
-          </button>
         </div>
       </div>
     </div>

@@ -11,11 +11,6 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import useStore from './useStore';
 
-/**
- * Wrap an async operation so it always resolves to { data, error }.
- * @param {Function} fn - Async thunk returning a value.
- * @returns {Promise<{ data: any, error: string|null }>}
- */
 async function safe(fn) {
   try {
     const data = await fn();
@@ -34,6 +29,8 @@ export default function useTauri() {
   const setSidecarStatus = useStore((s) => s.setSidecarStatus);
   const openPreview = useStore((s) => s.openPreview);
   const setAgents = useStore((s) => s.setAgents);
+  const setActiveManifest = useStore((s) => s.setActiveManifest);
+  const updateStepProgress = useStore((s) => s.updateStepProgress);
 
   // ─── Process incoming events from the Python engine ───────────────
   const processAgentEventLine = useCallback(
@@ -48,7 +45,7 @@ export default function useTauri() {
             addChatMessage({
               id: crypto.randomUUID(),
               role: 'assistant',
-              content: event.content ?? event.data?.content ?? '',
+              content: event.content || event.data?.content || '',
               timestamp: new Date().toISOString(),
             });
             break;
@@ -58,9 +55,16 @@ export default function useTauri() {
               addChatMessage({
                 id: crypto.randomUUID(),
                 role: 'system',
-                content: `🛡️ Ethical Guardrail Notice: ${event.data?.reason}`,
+                content: `Guardrail Policy Violation: ${event.data?.reason}`,
                 timestamp: new Date().toISOString(),
                 isGuardrailReject: true,
+              });
+            } else if (event.data?.reason) {
+              addChatMessage({
+                id: crypto.randomUUID(),
+                role: 'system',
+                content: `Security clearance verified: ${event.data.reason}`,
+                timestamp: new Date().toISOString(),
               });
             }
             break;
@@ -71,82 +75,99 @@ export default function useTauri() {
               id: crypto.randomUUID(),
               role: 'system',
               content:
-                event.data?.reason ??
-                event.reason ??
-                'Prompt rejected by ethical guardrails.',
+                event.data?.reason ||
+                event.reason ||
+                'Request declined by security guardrails.',
               timestamp: new Date().toISOString(),
               isGuardrailReject: true,
             });
             setSidecarStatus('idle');
             break;
 
-          case 'manifest':
+          case 'manifest': {
+            const manifestData = event.data || event.manifest || {};
+            setActiveManifest(manifestData);
             addChatMessage({
               id: crypto.randomUUID(),
               role: 'assistant',
-              content: JSON.stringify(event.data ?? event.manifest, null, 2),
+              content: `Generated execution plan **${manifestData.title || 'Automation Workflow'}** with ${manifestData.steps?.length || 0} coordinated operations.`,
+              manifest: manifestData,
               timestamp: new Date().toISOString(),
               isManifest: true,
             });
-            // Refresh agents list in store
             safe(() => invoke('get_agents')).then(({ data }) => {
               if (data) setAgents(data);
             });
             break;
+          }
+
+          case 'step_complete': {
+            const stepId = event.data?.step_id;
+            if (stepId) {
+              updateStepProgress(stepId, {
+                status: 'completed',
+                result: event.data?.result,
+              });
+            }
+            addChatMessage({
+              id: crypto.randomUUID(),
+              role: 'system',
+              content: `Operation completed: ${event.data?.action || stepId}`,
+              timestamp: new Date().toISOString(),
+            });
+            break;
+          }
 
           case 'hitl_pause': {
             setSidecarStatus('paused');
-            const draft = event.data ?? event.preview ?? {};
+            const draft = event.data || event.preview || {};
             openPreview({
-              type: draft.file_type ?? draft.type ?? 'text',
-              content: draft.content ?? '',
-              filename: draft.filename ?? 'draft.txt',
-              metadata: draft.metadata ?? {},
+              type: draft.file_type || draft.type || 'text',
+              content: draft.content || '',
+              filename: draft.filename || 'deliverable.md',
+              metadata: draft.metadata || {},
               draft_id: draft.draft_id,
-              revision: draft.revision ?? 1,
+              revision: draft.revision || 1,
             });
             break;
           }
 
           case 'draft_updated': {
-            const draft = event.data ?? event.preview ?? {};
+            const draft = event.data || event.preview || {};
             openPreview({
-              type: draft.file_type ?? draft.type ?? 'text',
-              content: draft.content ?? '',
-              filename: draft.filename ?? 'draft.txt',
-              metadata: draft.metadata ?? {},
+              type: draft.file_type || draft.type || 'text',
+              content: draft.content || '',
+              filename: draft.filename || 'deliverable.md',
+              metadata: draft.metadata || {},
               draft_id: draft.draft_id,
-              revision: draft.revision ?? 1,
+              revision: draft.revision || 1,
             });
             break;
           }
 
-          case 'step_complete':
+          case 'circuit_breaker': {
+            const stepId = event.data?.step_id;
+            if (stepId) {
+              updateStepProgress(stepId, {
+                status: 'tripped',
+                error: event.data?.message,
+              });
+            }
             addChatMessage({
               id: crypto.randomUUID(),
               role: 'system',
-              content: `Step completed: ${event.data?.step_id ?? ''}`,
-              timestamp: new Date().toISOString(),
-            });
-            break;
-
-          case 'circuit_breaker':
-            addChatMessage({
-              id: crypto.randomUUID(),
-              role: 'system',
-              content: `⚡ Circuit Breaker: ${
-                event.data?.message ?? 'Trip threshold reached'
-              }`,
+              content: `Circuit Breaker: ${event.data?.message || 'Threshold reached'}`,
               timestamp: new Date().toISOString(),
               isError: true,
             });
             break;
+          }
 
           case 'completed':
             addChatMessage({
               id: crypto.randomUUID(),
               role: 'assistant',
-              content: event.data?.message ?? 'Task completed successfully.',
+              content: event.data?.message || 'Workflow finished successfully.',
               timestamp: new Date().toISOString(),
             });
             setSidecarStatus('idle');
@@ -156,7 +177,7 @@ export default function useTauri() {
             break;
 
           case 'status': {
-            const statusData = event.data ?? {};
+            const statusData = event.data || {};
             if (statusData.step === 'paused') {
               setSidecarStatus('paused');
             } else if (
@@ -167,6 +188,13 @@ export default function useTauri() {
             } else {
               setSidecarStatus('running');
             }
+
+            if (statusData.step_id) {
+              updateStepProgress(statusData.step_id, {
+                status: 'running',
+              });
+            }
+
             if (statusData.message) {
               addChatMessage({
                 id: crypto.randomUUID(),
@@ -187,9 +215,9 @@ export default function useTauri() {
               id: crypto.randomUUID(),
               role: 'system',
               content:
-                event.data?.message ??
-                event.message ??
-                'An error occurred in the sidecar.',
+                event.data?.message ||
+                event.message ||
+                'An execution error occurred in the engine.',
               timestamp: new Date().toISOString(),
               isError: true,
             });
@@ -197,12 +225,21 @@ export default function useTauri() {
             break;
 
           default:
-            addChatMessage({
-              id: crypto.randomUUID(),
-              role: 'system',
-              content: line,
-              timestamp: new Date().toISOString(),
-            });
+            if (line.trim().startsWith('{')) {
+              try {
+                const parsed = JSON.parse(line);
+                if (parsed.message) {
+                  addChatMessage({
+                    id: crypto.randomUUID(),
+                    role: 'system',
+                    content: parsed.message,
+                    timestamp: new Date().toISOString(),
+                  });
+                }
+              } catch {
+                /* ignore non-standard json */
+              }
+            }
         }
       } catch {
         addChatMessage({
@@ -213,7 +250,7 @@ export default function useTauri() {
         });
       }
     },
-    [addChatMessage, setSidecarStatus, openPreview, setAgents]
+    [addChatMessage, setSidecarStatus, openPreview, setAgents, setActiveManifest, updateStepProgress]
   );
 
   // Listen to Tauri events emitted from Rust background tasks
@@ -242,7 +279,6 @@ export default function useTauri() {
 
   // ─── API Key Management ────────────────────────────────────────────
 
-  /** Persist an API key in the OS secure store + local vault. */
   const storeApiKey = useCallback(async (key) => {
     if (typeof localStorage !== 'undefined') {
       try {
@@ -254,7 +290,6 @@ export default function useTauri() {
     return safe(() => invoke('store_api_key', { key }));
   }, []);
 
-  /** Retrieve the stored API key. */
   const getApiKey = useCallback(async () => {
     const res = await safe(() => invoke('get_api_key'));
     if (res.data) return res;
@@ -265,7 +300,6 @@ export default function useTauri() {
     return res;
   }, []);
 
-  /** Delete the stored API key. */
   const deleteApiKey = useCallback(async () => {
     if (typeof localStorage !== 'undefined') {
       try {
@@ -277,7 +311,6 @@ export default function useTauri() {
     return safe(() => invoke('delete_api_key'));
   }, []);
 
-  /** Check whether an API key is stored. */
   const hasApiKey = useCallback(async () => {
     const res = await safe(() => invoke('has_api_key'));
     if (res.data) return res;
@@ -321,27 +354,19 @@ export default function useTauri() {
 
   // ─── Sidecar Lifecycle via Rust Engine ─────────────────────────────
 
-  /**
-   * Launch the Python engine sidecar and create the agent in SQLite.
-   *
-   * @param {string} prompt - The user's automation prompt.
-   * @param {string} apiKey - Optional Gemini API key override.
-   * @returns {{ data: AgentRecord, error: string|null }}
-   */
   const startSidecar = useCallback(
     async (prompt, apiKey) => {
       setSidecarStatus('running');
       const res = await safe(() =>
         invoke('start_agent_task', {
           prompt,
-          apiKey: apiKey ?? null,
+          apiKey: apiKey || 'local-mode',
         })
       );
 
       if (res.error) {
         setSidecarStatus('error');
       } else if (res.data) {
-        // Refresh agents in dashboard store immediately
         const { data: allAgents } = await safe(() => invoke('get_agents'));
         if (allAgents) setAgents(allAgents);
       }
@@ -350,43 +375,27 @@ export default function useTauri() {
     [setSidecarStatus, setAgents]
   );
 
-  /**
-   * Write a JSON payload to the sidecar's stdin.
-   * @param {Object} data - Arbitrary data to send.
-   */
   const sendSidecarInput = useCallback(async (data) => {
     const payload = typeof data === 'string' ? data : JSON.stringify(data);
     return safe(() => invoke('send_agent_input', { input: payload }));
   }, []);
 
-  /**
-   * Stop or cancel the currently running agent.
-   */
   const stopSidecar = useCallback(async () => {
     setSidecarStatus('idle');
     return safe(() => invoke('stop_agent_task'));
   }, [setSidecarStatus]);
 
-  // ─── Public API ────────────────────────────────────────────────────
-
   return {
-    // API key
     storeApiKey,
     getApiKey,
     deleteApiKey,
     hasApiKey,
-
-    // Preflight
     runPreflightCheck,
     autoProvision,
-
-    // Agents
     getAgents,
     saveAgent,
     deleteAgent,
     getExecutionHistory,
-
-    // Sidecar
     startSidecar,
     sendSidecarInput,
     stopSidecar,
