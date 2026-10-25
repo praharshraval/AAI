@@ -67,13 +67,26 @@ class CircuitBreakerState(BaseModel):
     is_tripped: bool = False
 
 
+def _add_messages(existing: Any, new_items: Any) -> list[dict]:
+    """Safe reducer that always accumulates message dicts without crashing."""
+    base = list(existing) if isinstance(existing, (list, tuple)) else []
+    if isinstance(new_items, (list, tuple)):
+        for item in new_items:
+            if isinstance(item, dict):
+                base.append(item)
+            elif item is not None:
+                base.append({"role": "system", "content": str(item)})
+    elif isinstance(new_items, dict):
+        base.append(new_items)
+    elif new_items is not None:
+        base.append({"role": "system", "content": str(new_items)})
+    return base
+
+
 # -- LangGraph State (TypedDict for graph compatibility) --
 
 class AgentState(TypedDict):
-    """Root state flowing through the LangGraph agent graph.
-    
-    Uses Annotated reducers for message accumulation.
-    """
+    """Root state flowing through the LangGraph agent graph."""
     # User input
     user_prompt: str
     api_key: str
@@ -89,7 +102,7 @@ class AgentState(TypedDict):
     
     # Execution tracking
     current_step_index: int
-    execution_results: Annotated[list[dict], operator.add]
+    execution_results: list[dict]
     
     # Browser automation state
     browser_session_id: Optional[str]
@@ -106,7 +119,7 @@ class AgentState(TypedDict):
     circuit_breakers: dict[str, dict]  # step_id -> CircuitBreakerState dict
     
     # Messaging
-    messages: Annotated[Sequence[dict], operator.add]
+    messages: Annotated[list[dict], _add_messages]
     
     # Terminal state
     final_output: Optional[dict]
