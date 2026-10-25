@@ -66,7 +66,7 @@ export default function App() {
       const { data: hasKey } = await hasApiKey();
       const { data: keyVal } = await getApiKey();
 
-      if (!hasKey || !keyVal || keyVal.trim() === '') {
+      if (!hasKey || !keyVal || keyVal.trim() === '' || keyVal === 'local-mode') {
         setScreen('api-key-setup');
       } else {
         updateSettings({ apiKeyConfigured: true });

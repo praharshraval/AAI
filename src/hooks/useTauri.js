@@ -385,6 +385,11 @@ export default function useTauri() {
     return safe(() => invoke('stop_agent_task'));
   }, [setSidecarStatus]);
 
+  const openFileInFinder = useCallback(
+    (path) => safe(() => invoke('open_file_in_finder', { path })),
+    []
+  );
+
   return {
     storeApiKey,
     getApiKey,
@@ -399,5 +404,6 @@ export default function useTauri() {
     startSidecar,
     sendSidecarInput,
     stopSidecar,
+    openFileInFinder,
   };
 }

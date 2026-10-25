@@ -18,6 +18,7 @@ import {
   CornerDownLeft,
   Eye,
   Code2,
+  FolderOpen,
 } from 'lucide-react';
 import useStore from '../hooks/useStore';
 import useTauri from '../hooks/useTauri';
@@ -35,7 +36,7 @@ export default function PreviewModal() {
   const closePreview = useStore((s) => s.closePreview);
   const setSidecarStatus = useStore((s) => s.setSidecarStatus);
 
-  const { sendSidecarInput } = useTauri();
+  const { sendSidecarInput, openFileInFinder } = useTauri();
 
   const [feedback, setFeedback] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -93,6 +94,18 @@ export default function PreviewModal() {
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                const target = previewData.metadata?.desktop_path || previewData.filename || 'automation_output.md';
+                openFileInFinder(target);
+              }}
+              className="flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors"
+              title="Reveal in macOS Finder"
+            >
+              <FolderOpen size={13} className="text-emerald-400" />
+              <span>Show in Finder</span>
+            </button>
+
             <div className="flex rounded-lg border border-zinc-800 bg-zinc-900 p-0.5 text-xs">
               <button
                 onClick={() => setViewMode('formatted')}

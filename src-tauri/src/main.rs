@@ -416,6 +416,28 @@ async fn stop_agent_task(state: tauri::State<'_, AppState>) -> Result<(), String
     Ok(())
 }
 
+/// Open a file in macOS Finder or default system handler.
+#[tauri::command]
+fn open_file_in_finder(path: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg("-R")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        std::process::Command::new("explorer")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+}
+
 // =============================================================================
 // Application Bootstrap
 // =============================================================================
@@ -450,6 +472,7 @@ fn main() {
             start_agent_task,
             send_agent_input,
             stop_agent_task,
+            open_file_in_finder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
